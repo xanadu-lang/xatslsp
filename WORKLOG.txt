@@ -23,4 +23,6 @@ Also adding the submodule "xanadu":
 
 Creating WORKLOG.txt (this file) for recording "significant" events
 
+Creating xanadu-lang/project/xatslsp and adding some collaborators
+
 ###### end of [WORKLOG.txt] ######
