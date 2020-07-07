@@ -1,5 +1,12 @@
 ######
 #
+# WORKLOG for
+# recording "significant" events
+#
+######
+
+######
+#
 # HX-2020-07-07
 #
 ######
@@ -14,7 +21,6 @@ Also adding the submodule "xanadu":
 	path = xanadu
 	url = https://github.com/xanadu-lang/xanadu.git
 
-Creating WORKLOG.txt (this file) for recording "significant" events or
-milestones.
+Creating WORKLOG.txt (this file) for recording "significant" events
 
 ###### end of [WORKLOG.txt] ######
