@@ -1,0 +1,20 @@
+######
+#
+# HX-2020-07-07
+#
+######
+
+Creating the following repository:
+
+https://github.com/xanadu-lang/xatslsp.git
+
+Also adding the submodule "xanadu":
+
+[submodule "xanadu"]
+	path = xanadu
+	url = https://github.com/xanadu-lang/xanadu.git
+
+Creating WORKLOG.txt (this file) for recording "significant" events or
+milestones.
+
+###### end of [WORKLOG.txt] ######
