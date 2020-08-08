@@ -1,0 +1,23 @@
+######
+#
+# HX-2020-08-08:
+# All the source files
+# in HX/srcgen are supposed
+# to be copied from elsewhere
+#
+######
+
+CPF=cp -f
+
+######
+
+all::
+
+######
+
+all:: ; \
+$(CPF) ./../src/*.h ./srcgen/CATS/.
+all:: ; \
+$(CPF) ./../src/*.c ./srcgen/CATS/.
+
+###### end of [Makefile_update] ######

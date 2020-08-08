@@ -88,7 +88,7 @@ void json_rpc_method_not_found_error(FILE *fout, json_rpc_request_notification_t
 
   fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
   
-  char *method = request->method->string;
+  const char *method = request->method->string;
   struct json_value_s method_value = {request->method, json_type_string};
     
   char *method_json = json_write_minified(&method_value, NULL);
@@ -198,7 +198,7 @@ int json_rpc_parse_request_notification(struct json_value_s *root, json_rpc_requ
   struct json_object_element_s* property = object->start;
   while (property != NULL) {
     
-    char *property_name = property->name->string;
+    const char *property_name = property->name->string;
     struct json_value_s* property_value = property->value;
     struct json_string_s *string_value = json_value_as_string(property_value);
 
