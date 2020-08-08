@@ -1,0 +1,12 @@
+---
+dist: bionic
+
+language: c
+
+script:
+  - date
+  - mkdir .build && cd .build && cmake ..
+  - make test
+
+after_script:
+  - date
