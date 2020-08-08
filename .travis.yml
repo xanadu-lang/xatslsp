@@ -18,6 +18,7 @@ install:
 script:
   - date
   - mkdir .build && cd .build && cmake ..
+  - make
   - make test
 
 after_script:
