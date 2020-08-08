@@ -53,7 +53,7 @@ void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse
   
   fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
   
-  fprintf(fout, "{\"code\": -32700, \"message\": \"Parse error\", \"data\": \"Error parsing JSON: %d(line=%d, offs=%d): %s\"}",
+  fprintf(fout, "{\"code\": -32700, \"message\": \"Parse error\", \"data\": \"Error parsing JSON: %lu(line=%lu, offs=%lu): %s\"}",
     result->error_offset, result->error_line_no, result->error_row_no, reason);
   
   if (id != NULL) {
@@ -297,14 +297,14 @@ char *parse_request(FILE *fd, struct phr_header *headers, size_t *num_headers, s
     
   char *content_buf = malloc( *content_length + 1 );
   if (content_buf == NULL) {
-    fprintf(stderr, "unable to allocate %d bytes for content buffer\n", *content_length);
+    fprintf(stderr, "unable to allocate %lu bytes for content buffer\n", *content_length);
     return NULL;
   }
 
   if (buf_have >= *content_length) {
     memcpy(content_buf, buf + pret, *content_length);
   } else {
-    // fprintf(stderr, "buf_have %d, content_length %d\n", buf_have, *content_length);
+    // fprintf(stderr, "buf_have %lu, content_length %d\n", buf_have, *content_length);
   
     size_t buf_to_read = *content_length - buf_have;
 

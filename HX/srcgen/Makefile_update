@@ -1,0 +1,5 @@
+
+all::
+
+all:: ; cp -f ./../../src/*.h ./CATS/.
+all:: ; cp -f ./../../src/*.c ./CATS/.

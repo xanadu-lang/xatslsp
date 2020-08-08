@@ -37,4 +37,8 @@ BUILD/picohttpparser.o: \
 
 ######
 
+cleanall: ; rm -f BUILD/*.o
+
+######
+
 ###### end of [Makefile] ######
