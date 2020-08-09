@@ -165,6 +165,55 @@ void json_rpc_internal_error(FILE *fout, json_rpc_request_notification_t *reques
   fprintf(fout, "}");  
 }
 
+void json_rpc_custom_error(FILE *fout, json_rpc_request_notification_t *request, int error_code, const char *message) {
+  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
+
+  fprintf(fout, "{\"code\": %d, \"message\": ", error_code);
+
+  if (message != NULL && strlen(message) > 0) {
+    struct json_string_s message_string = {message, strlen(message)};
+    struct json_value_s message_value = {&message_string, json_type_string};
+
+    char *message_json = json_write_minified(&message_value, NULL);
+    if (message_json != NULL) {
+      fprintf(fout, "%s", message_json);
+      free(message_json);
+    } else {
+      fprintf(fout, "\"\"");
+    }
+  } else {
+    fprintf(fout, "\"(no message)\"");
+  }
+
+  fprintf(fout, "}");
+
+  if (request->id != NULL) {
+    char *idstring = json_write_minified(request->id, NULL);
+    if (idstring != NULL) {
+      fprintf(fout, ", \"id\": %s", idstring);
+      free(idstring);
+    }
+  }
+
+  fprintf(fout, "}");
+}
+
+void json_rpc_custom_success(FILE *fout, json_rpc_request_notification_t *request, const char *json) {
+  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"result\": ");
+
+  fprintf(fout, "%s", json);
+
+  if (request->id != NULL) {
+    char *idstring = json_write_minified(request->id, NULL);
+    if (idstring != NULL) {
+      fprintf(fout, ", \"id\": %s", idstring);
+      free(idstring);
+    }
+  }
+
+  fprintf(fout, "}");
+}
+
 void json_rpc_success(FILE *fout, json_rpc_request_notification_t *request, const struct json_value_s *result) {
   fprintf(fout, "{\"jsonrpc\": \"2.0\", \"result\": ");
 
@@ -225,6 +274,11 @@ int json_rpc_parse_request_notification(struct json_value_s *root, json_rpc_requ
 
   int valid = has_jsonrpc && method_valid && params_valid && id_valid;
   return valid;
+}
+
+int json_rpc_request_is_notification(json_rpc_request_notification_t *request) {
+  assert(request != NULL);
+  return (request->id == NULL);
 }
 
 int atoi_len(const char *str, int len) {
