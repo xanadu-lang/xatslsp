@@ -127,43 +127,50 @@ int main(int argc, char **argv) {
 
   check_request("Empty request",
                 "Content-Length: 2\r\n\r\n{}",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32600, \"message\": \"Invalid request\"}}");
+                "Content-Length: 70\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32600,\"message\":\"Invalid request\"}}");
   
   check_request("Malformed request",
                 "Content-Length: 5\r\n\r\n{\"foo",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32700, \"message\": \"Parse error\", \"data\": \
+                "Content-Length: 159\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32700,\"message\":\"Parse error\",\"data\":\
 \"Error parsing JSON: 6(line=1, offs=6): colon separating name/value pair was missing\"}}");
 
   check_request("Unknown method",
                 "Content-Length: 61\r\n\r\n\
 {\"jsonrpc\": \"2.0\", \"method\": \"sum\", \"params\": [1,2], \"id\": 1}",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32601, \"message\": \"Method not found\", \"data\": \"sum\"}, \"id\": 1}");
+                "Content-Length: 91\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"sum\"},\"id\":1}");
 
   check_request("Internal error",
                 "Content-Length: 49\r\n\r\n\
 {\"jsonrpc\": \"2.0\", \"method\": \"interror\", \"id\": 1}",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32603, \"message\": \"Internal error\", \"data\": \"INTERNAL ERROR! Sorry, details unavailable.\\nPlease try again later\"}, \"id\": 1}");
+                "Content-Length: 153\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32603,\"message\":\"Internal error\",\"data\":\"INTERNAL ERROR! Sorry, details unavailable.\\nPlease try again later\"},\"id\":1}");
 
   check_request("Escaping of errors",
                 "Content-Length: 50\r\n\r\n\
 {\"jsonrpc\": \"2.0\", \"method\": \"interror2\", \"id\": 1}",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32603, \"message\": \"Internal error\", \"data\": \"INTERNAL ERROR! \\\" \"}, \"id\": 1}");
+                "Content-Length: 105\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32603,\"message\":\"Internal error\",\"data\":\"INTERNAL ERROR! \\\" \"},\"id\":1}");
   
 
   check_request("Invalid parameters",
                 "Content-Length: 62\r\n\r\n\
 {\"jsonrpc\": \"2.0\", \"method\": \"sum1\", \"params\": [3,2], \"id\": 1}",
-                "{\"jsonrpc\": \"2.0\", \"error\": \
-{\"code\": -32602, \"message\": \"Invalid params\", \"data\": \"there must be 2 numbers in an array, the first number being 1\"}, \"id\": 1}");
+                "Content-Length: 147\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"error\":\
+{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"there must be 2 numbers in an array, the first number being 1\"},\"id\":1}");
 
   check_request("Succesful call",
                 "Content-Length: 64\r\n\r\n\
 {\"jsonrpc\": \"2.0\", \"method\": \"sum1\", \"params\": [1,4], \"id\": \"a\"}",
-                "{\"jsonrpc\": \"2.0\", \"result\": 5.000000, \"id\": \"a\"}");
+                "Content-Length: 45\r\n\r\n\
+{\"jsonrpc\":\"2.0\",\"result\":5.000000,\"id\":\"a\"}");
 
 }
