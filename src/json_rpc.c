@@ -11,24 +11,8 @@
 
 #include "json_rpc.h"
 
-struct json_string_s json_make_string(const char *value) {
-  assert(value != NULL);
-  struct json_string_s string = {value, strlen(value)};
-  return string;
-}
+/* ****** ****** */
 
-struct json_number_s json_make_number(const char *num) {
-  assert(num != NULL);
-  struct json_number_s number = {num, strlen(num)};
-  return number;
-}
-
-struct json_object_s json_object_empty() {
-  struct json_object_s obj = {NULL, 0};
-  return obj;
-}
-
-// NOTE: expects NULL-terminated [struct json_object_element_s *prop] arguments!
 void json_object_extend(struct json_object_s *obj, ...) {
   assert(obj != NULL);
 
@@ -52,43 +36,7 @@ void json_object_extend(struct json_object_s *obj, ...) {
   va_end(args);
 }
 
-struct json_value_s json_value_string(const struct json_string_s *str) {
-  assert(str != NULL);
-  struct json_value_s value = {str, json_type_string};
-  return value;
-}
-struct json_value_s json_value_number(const struct json_number_s *num) {
-  assert(num != NULL);
-  struct json_value_s value = {num, json_type_number};
-  return value;
-}
-struct json_value_s json_value_object(const struct json_object_s *obj) {
-  if (obj != NULL) {
-    struct json_value_s value = {obj, json_type_object};
-    return value;
-  } else {
-    struct json_value_s value = {NULL, json_type_null};
-    return value;
-  }
-}
-
-#define JSON_PROP_NUMBER(name, prop, value)                             \
-  struct json_string_s name##_prop_string = json_make_string((prop));   \
-  struct json_number_s name##_value_number = json_make_number((value)); \
-  struct json_value_s  name##_value_number_v = json_value_number(&(name##_value_number)); \
-  struct json_object_element_s name = {&(name##_prop_string), &(name##_value_number_v), NULL};
-#define JSON_PROP_STRING(name, prop, value)                           \
-  struct json_string_s name##_prop_string = json_make_string((prop));   \
-  struct json_string_s name##_value_string = json_make_string((value));      \
-  struct json_value_s  name##_value_string_v = json_value_string(&(name##_value_string)); \
-  struct json_object_element_s name = {&(name##_prop_string), &(name##_value_string_v), NULL};
-#define JSON_PROP_OBJECT(name, prop, object) \
-  struct json_string_s name##_prop_string = json_make_string((prop)); \
-  struct json_value_s name##_value_object = json_value_object(&object); \
-  struct json_object_element_s name = {&(name##_prop_string), &(name##_value_object), NULL};
-#define JSON_PROP_VALUE(name, prop, value)                            \
-  struct json_string_s name##_prop_string = json_make_string((prop));    \
-  struct json_object_element_s name = {&(name##_prop_string), (value), NULL};
+/* ****** ****** */
 
 static void json_rpc_write_response(FILE *fout, struct json_value_s *value) {
   if (value == NULL) {
@@ -131,9 +79,13 @@ static void json_rpc_error(FILE *fout, const struct json_value_s *id, const char
   }
 }
 
-void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse_result_s *result) {
+/* ****** ****** */
+
+void json_parse_error_reason(char *data_buf, size_t data_buf_size, struct json_parse_result_s *result) {
+  assert(data_buf != NULL && data_buf_size >= 32);
+  assert(result != NULL);
   assert(result->error != json_parse_error_none);
-  
+
   const char *reason;
   switch (result->error) {
   case json_parse_error_expected_comma_or_closing_bracket:
@@ -172,13 +124,20 @@ void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse
     break;
   }
 
-  char data_buf[1024];
   data_buf[0] = 0;
-  int data_used = snprintf(data_buf, sizeof(data_buf), "Error parsing JSON: %lu(line=%lu, offs=%lu): %s",
+  int data_used = snprintf(data_buf, data_buf_size, "Error parsing JSON: %lu(line=%lu, offs=%lu): %s",
                            result->error_offset, result->error_line_no, result->error_row_no, reason);
-  if (!(data_used >= 0 && data_used < sizeof(data_buf)-1)) {
-    snprintf(data_buf, sizeof(data_buf), "Unable to print error location: buffer overflow!");
+  if (!(data_used >= 0 && data_used < data_buf_size-1)) {
+    snprintf(data_buf, data_buf_size, "Unable to print error location: buffer overflow!");
   }
+
+}
+
+void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse_result_s *result) {
+  assert(result->error != json_parse_error_none);
+
+  char data_buf[1024];
+  json_parse_error_reason(data_buf, sizeof(data_buf), result);
 
   struct json_string_s data_string = json_make_string(data_buf);
   struct json_value_s data = json_value_string(&data_string);
@@ -251,52 +210,8 @@ void json_rpc_custom_success(FILE *fout, json_rpc_request_notification_t *reques
   struct json_value_s *json_value = json_parse_ex(json, json_length, json_parse_flags_default, NULL, NULL, &parse_result);
 
   if (parse_result.error != json_parse_error_none) {
-    const char *reason;
-    // TODO: put into a lookup array
-    switch (parse_result.error) {
-    case json_parse_error_expected_comma_or_closing_bracket:
-      reason = "expected either a comma or a closing brace or bracket to close an object or array";
-      break;
-    case json_parse_error_expected_colon:
-      reason = "colon separating name/value pair was missing";
-      break;
-    case json_parse_error_expected_opening_quote:
-      reason = "expected string to begin with a double quote";
-      break;
-    case json_parse_error_invalid_string_escape_sequence:
-      reason = "invalid escaped sequence in string";
-      break;
-    case json_parse_error_invalid_number_format:
-      reason = "invalid number format";
-      break;
-    case json_parse_error_invalid_value:
-      reason = "invalid value";
-      break;
-    case json_parse_error_premature_end_of_buffer:
-      reason = "reached end of buffer before object/array was complete";
-      break;
-    case json_parse_error_invalid_string:
-      reason = "string was malformed";
-      break;
-    case json_parse_error_allocator_failed:
-      reason = "a call to malloc, or a user provider allocator, failed.";
-      break;
-    case json_parse_error_unexpected_trailing_characters:
-      reason = "the JSON input had unexpected trailing characters that weren't part of the JSON value";
-      break;
-    case json_parse_error_unknown:
-    default:
-      reason = "unknown error";
-      break;
-    }
-
     char data_buf[1024];
-    data_buf[0] = 0;
-    int data_used = snprintf(data_buf, sizeof(data_buf), "Error parsing JSON: %lu(line=%lu, offs=%lu): %s",
-                             parse_result.error_offset, parse_result.error_line_no, parse_result.error_row_no, reason);
-    if (!(data_used >= 0 && data_used < sizeof(data_buf)-1)) {
-      snprintf(data_buf, sizeof(data_buf), "Unable to print error location: buffer overflow!");
-    }
+    json_parse_error_reason(data_buf, sizeof(data_buf), &parse_result);
 
     struct json_string_s data_string = json_make_string(data_buf);
     struct json_value_s data = json_value_string(&data_string);
