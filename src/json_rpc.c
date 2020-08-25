@@ -4,15 +4,88 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include "picohttpparser.h"
 #include "json.h"
 
 #include "json_rpc.h"
 
-void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse_result_s *result) {
+/* ****** ****** */
+
+void json_object_extend(struct json_object_s *obj, ...) {
+  assert(obj != NULL);
+
+  va_list args;
+
+  va_start(args, obj);
+  while (1) {
+    struct json_object_element_s *prop = va_arg(args, struct json_object_element_s *);
+    if (prop == NULL) {
+      break;
+    }
+    if (prop->value == NULL) {
+      continue; // skip it (if you want the null literal as property of object, use the corresponding value!)
+    }
+
+    struct json_object_element_t *tmp = obj->start;
+    obj->start = prop;
+    prop->next = tmp;
+    obj->length++;    
+  }
+  va_end(args);
+}
+
+/* ****** ****** */
+
+static void json_rpc_write_response(FILE *fout, struct json_value_s *value) {
+  if (value == NULL) {
+    fprintf(fout, "Content-Length: 4\r\n\r\nnull");
+  } else {
+    size_t size = 0;
+    char *string = json_write_minified(value, &size);
+
+    assert(string != NULL);
+    fprintf(fout, "Content-Length: %ld\r\n\r\n%s", size, string);
+
+    free(string);
+  }
+  fflush(fout);
+}
+
+static void json_rpc_error(FILE *fout, const struct json_value_s *id, const char *code, const char *message, const struct json_value_s *data) {
+  JSON_PROP_NUMBER(error_code, "code", code);
+  JSON_PROP_STRING(error_message, "message", message);
+  JSON_PROP_VALUE(error_data, "data", data);
+
+  struct json_object_s error_obj = json_object_empty();
+  json_object_extend(&error_obj, &error_data, &error_message, &error_code, NULL);
+
+  struct json_object_s response_obj = json_object_empty();
+  JSON_PROP_STRING(jsonrpc, "jsonrpc", "2.0");
+  JSON_PROP_OBJECT(error, "error", error_obj);
+
+  if (id != NULL) {
+    JSON_PROP_VALUE(id_prop, "id", id);
+    json_object_extend(&response_obj, &id_prop, &error, &jsonrpc, NULL);
+
+    struct json_value_s response = json_value_object(&response_obj);
+    json_rpc_write_response(fout, &response);
+  } else {
+    json_object_extend(&response_obj, &error, &jsonrpc, NULL);
+
+    struct json_value_s response = json_value_object(&response_obj);
+    json_rpc_write_response(fout, &response);
+  }
+}
+
+/* ****** ****** */
+
+void json_parse_error_reason(char *data_buf, size_t data_buf_size, struct json_parse_result_s *result) {
+  assert(data_buf != NULL && data_buf_size >= 32);
+  assert(result != NULL);
   assert(result->error != json_parse_error_none);
-  
+
   const char *reason;
   switch (result->error) {
   case json_parse_error_expected_comma_or_closing_bracket:
@@ -50,187 +123,133 @@ void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse
     reason = "unknown error";
     break;
   }
-  
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
-  
-  fprintf(fout, "{\"code\": -32700, \"message\": \"Parse error\", \"data\": \"Error parsing JSON: %lu(line=%lu, offs=%lu): %s\"}",
-    result->error_offset, result->error_line_no, result->error_row_no, reason);
-  
-  if (id != NULL) {
-    char *idstring = json_write_minified(id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
+
+  data_buf[0] = 0;
+  int data_used = snprintf(data_buf, data_buf_size, "Error parsing JSON: %lu(line=%lu, offs=%lu): %s",
+                           result->error_offset, result->error_line_no, result->error_row_no, reason);
+  if (!(data_used >= 0 && data_used < data_buf_size-1)) {
+    snprintf(data_buf, data_buf_size, "Unable to print error location: buffer overflow!");
   }
-  
-  fprintf(fout, "}");
+
+}
+
+void json_rpc_parse_error(FILE *fout, struct json_value_s *id, struct json_parse_result_s *result) {
+  assert(result->error != json_parse_error_none);
+
+  char data_buf[1024];
+  json_parse_error_reason(data_buf, sizeof(data_buf), result);
+
+  struct json_string_s data_string = json_make_string(data_buf);
+  struct json_value_s data = json_value_string(&data_string);
+  json_rpc_error(fout, id, "-32700", "Parse error", &data);
 }
 
 void json_rpc_invalid_request_error(FILE *fout, json_rpc_request_notification_t *request) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
-  
-  fprintf(fout, "{\"code\": -32600, \"message\": \"Invalid request\"}");
-  
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
-  }
-  
-  fprintf(fout, "}");
+  assert(request != NULL);
+
+  json_rpc_error(fout, request->id, "-32600", "Invalid request", NULL);
 }
 
 void json_rpc_method_not_found_error(FILE *fout, json_rpc_request_notification_t *request) {
   assert(request != NULL);
 
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
-  
-  const char *method = request->method->string;
-  struct json_value_s method_value = {request->method, json_type_string};
-    
-  char *method_json = json_write_minified(&method_value, NULL);
-  
-  fprintf(fout, "{\"code\": -32601, \"message\": \"Method not found\", \"data\": %s}", method_json);
-  free(method_json);
-
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
-  }
-  
-  fprintf(fout, "}");
+  struct json_value_s method_value = json_value_string(request->method);
+  json_rpc_error(fout, request->id, "-32601", "Method not found", &method_value);
 }
 
 void json_rpc_invalid_params_error(FILE *fout, json_rpc_request_notification_t *request, const char *reason) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
-  
-  fprintf(fout, "{\"code\": -32602, \"message\": \"Invalid params\"");
+  assert(request != NULL);
 
   if (reason != NULL && strlen(reason) > 0) {
-    struct json_string_s reason_string = {reason, strlen(reason)};
-    struct json_value_s reason_value = {&reason_string, json_type_string};
+    struct json_string_s reason_string = json_make_string (reason);
+    struct json_value_s reason_value = json_value_string (&reason_string);
     
-    char *reason_json = json_write_minified(&reason_value, NULL);
-    if (reason_json != NULL) {
-      fprintf(fout, ", \"data\": %s", reason_json);
-      free(reason_json);
-    }
+    json_rpc_error(fout, request->id, "-32602", "Invalid params", &reason_value);
+  } else {
+    json_rpc_error(fout, request->id, "-32602", "Invalid params", NULL);
   }
-
-  fprintf(fout, "}");
-  
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
-  }
-  
-  fprintf(fout, "}");  
 }
 
 void json_rpc_internal_error(FILE *fout, json_rpc_request_notification_t *request, const char *reason) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
-  
-  fprintf(fout, "{\"code\": -32603, \"message\": \"Internal error\"");
+  assert(request != NULL);
 
   if (reason != NULL && strlen(reason) > 0) {
-    struct json_string_s reason_string = {reason, strlen(reason)};
-    struct json_value_s reason_value = {&reason_string, json_type_string};
+    struct json_string_s reason_string = json_make_string (reason);
+    struct json_value_s reason_value = json_value_string (&reason_string);
     
-    char *reason_json = json_write_minified(&reason_value, NULL);
-    if (reason_json != NULL) {
-      fprintf(fout, ", \"data\": %s", reason_json);
-      free(reason_json);
-    }
+    json_rpc_error(fout, request->id, "-32603", "Internal error", &reason_value);
+  } else {
+    json_rpc_error(fout, request->id, "-32603", "Internal error", NULL);
   }
-
-  fprintf(fout, "}");  
-  
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
-  }
-  
-  fprintf(fout, "}");  
 }
 
 void json_rpc_custom_error(FILE *fout, json_rpc_request_notification_t *request, int error_code, const char *message) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"error\": ");
+  assert(request != NULL);
 
-  fprintf(fout, "{\"code\": %d, \"message\": ", error_code);
+  char error_buf[16];
+  error_buf[0] = 0;
+  int error_used = snprintf(error_buf, sizeof(error_buf), "%d", error_code);
+  assert(error_used >= 0 && error_used < sizeof(error_buf)-1);
 
-  if (message != NULL && strlen(message) > 0) {
-    struct json_string_s message_string = {message, strlen(message)};
-    struct json_value_s message_value = {&message_string, json_type_string};
-
-    char *message_json = json_write_minified(&message_value, NULL);
-    if (message_json != NULL) {
-      fprintf(fout, "%s", message_json);
-      free(message_json);
-    } else {
-      fprintf(fout, "\"\"");
-    }
-  } else {
-    fprintf(fout, "\"(no message)\"");
+  if (message == NULL) {
+    message = "(no message)";
   }
 
-  fprintf(fout, "}");
-
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
-  }
-
-  fprintf(fout, "}");
+  struct json_string_s message_string = json_make_string (message);
+  struct json_value_s message_value = json_value_string (&message_string);
+    
+  json_rpc_error(fout, request->id, error_buf, message, NULL);
 }
 
 void json_rpc_custom_success(FILE *fout, json_rpc_request_notification_t *request, const char *json) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"result\": ");
+  assert(request != NULL);
+  assert(json != NULL);
+  
+  struct json_parse_result_s parse_result;
+  size_t json_length = strlen(json);
+  struct json_value_s *json_value = json_parse_ex(json, json_length, json_parse_flags_default, NULL, NULL, &parse_result);
 
-  fprintf(fout, "%s", json);
+  if (parse_result.error != json_parse_error_none) {
+    char data_buf[1024];
+    json_parse_error_reason(data_buf, sizeof(data_buf), &parse_result);
 
-  if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
+    struct json_string_s data_string = json_make_string(data_buf);
+    struct json_value_s data = json_value_string(&data_string);
+
+    json_rpc_error(fout, request->id, "-32603", "Internal error", &data);
+  } else {
+    json_rpc_success(fout, request, json_value);
   }
 
-  fprintf(fout, "}");
+  if (json_value != json_null) {
+    free(json_value);
+  }
 }
 
 void json_rpc_success(FILE *fout, json_rpc_request_notification_t *request, const struct json_value_s *result) {
-  fprintf(fout, "{\"jsonrpc\": \"2.0\", \"result\": ");
+  assert(request != NULL);
 
-  char *result_json = json_write_minified(result, NULL);
-  assert(result_json != NULL);
-  fprintf(fout, "%s", result_json);
-  free(result_json);
+  struct json_value_s null_result = {NULL, json_type_null};
+  if (result == NULL) {
+    result = &null_result;
+  }
+
+  struct json_object_s response_obj = json_object_empty();
+  JSON_PROP_STRING(jsonrpc, "jsonrpc", "2.0");
+  JSON_PROP_VALUE(result_prop, "result", result);
 
   if (request->id != NULL) {
-    char *idstring = json_write_minified(request->id, NULL);
-    if (idstring != NULL) {
-      fprintf(fout, ", \"id\": %s", idstring);
-      free(idstring);
-    }
+    JSON_PROP_VALUE(id_prop, "id", request->id);
+    json_object_extend(&response_obj, &id_prop, &result_prop, &jsonrpc, NULL);
+
+    struct json_value_s response = json_value_object(&response_obj);
+    json_rpc_write_response(fout, &response);
+  } else {
+    json_object_extend(&response_obj, &result_prop, &jsonrpc, NULL);
+
+    struct json_value_s response = json_value_object(&response_obj);
+    json_rpc_write_response(fout, &response);
   }
-  
-  fprintf(fout, "}");    
 }
 
 int json_rpc_parse_request_notification(struct json_value_s *root, json_rpc_request_notification_t *res) {
@@ -305,7 +324,7 @@ struct phr_header *get_request_header(struct phr_header *headers, size_t num_hea
 }
 
 char *parse_request(FILE *fd, struct phr_header *headers, size_t *num_headers, size_t *content_length) {
-  char buf[4096];
+  char buf[128];
   size_t buflen = 0, prevbuflen = 0;
   size_t rret;
   int pret = 0;
@@ -316,8 +335,10 @@ char *parse_request(FILE *fd, struct phr_header *headers, size_t *num_headers, s
   while (1) {
     // read the request
     rret = fread(buf + buflen, 1, sizeof(buf) - buflen, fd);
-    if (rret == 0)
+    if (rret == 0) {
+      fprintf(stderr, "parse_request: unexpected EOF on fd\n");
       return NULL; // unexpected EOF
+    }
 
     prevbuflen = buflen;
     buflen += rret;
@@ -384,7 +405,7 @@ int json_rpc_server_step(FILE *fd, FILE *fout, json_rpc_evaluate_t evaluate, voi
   char *content = parse_request(fd, headers, &num_headers, &content_length);
     
   if (content == NULL) {
-    // failed to parse anything
+    fprintf(stderr, "json_rpc_server_step: failed to parse anything\n");
     return 1;
   }
   // printf("RAW content: %s with length %d\n", content, content_length);

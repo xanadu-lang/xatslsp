@@ -14,7 +14,7 @@ FetchContent_Declare(librope
 
 FetchContent_MakeAvailable(jsonh picohttpparser librope)
 
-project (TEST)
+project (XATSLSP)
 
 # picohttpparser does not supply a CMakeLists.txt file,
 # so define a library yourself
