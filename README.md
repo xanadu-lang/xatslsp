@@ -2,14 +2,18 @@
 
 Implementing Language Server for Xanadu
 
-## Status
+## Build Status
 
+* [![Build Status](https://travis-ci.org/xanadu-lang/xatslsp.svg?branch=master)](https://travis-ci.org/xanadu-lang/xatslsp) Ubuntu
+
+## Project Status
 - [x] startup/shutdown
 - [x] text changes
 - [ ] parsing the source via ATS/Xanadu
 - [ ] reporting type checking errors
 - [ ] hover hints
 - [ ] automatic code completion
+
 
 ## Building
 
