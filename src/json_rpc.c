@@ -5,8 +5,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <ctype.h>
 
-#include "picohttpparser.h"
 #include "json.h"
 
 #include "json_rpc.h"
@@ -40,17 +40,18 @@ void json_object_extend(struct json_object_s *obj, ...) {
 
 static void json_rpc_write_response(FILE *fout, struct json_value_s *value) {
   if (value == NULL) {
-    fprintf(fout, "Content-Length: 4\r\n\r\nnull");
+    fprintf(fout, "Content-Length: 0\r\n\r\n\r\n");
+    fflush(fout);
   } else {
     size_t size = 0;
     char *string = json_write_minified(value, &size);
 
     assert(string != NULL);
-    fprintf(fout, "Content-Length: %ld\r\n\r\n%s", size, string);
+    fprintf(fout, "Content-Length: %ld\r\n\r\n%s\r\n", size, string);
+    fflush(fout);
 
     free(string);
   }
-  fflush(fout);
 }
 
 static void json_rpc_error(FILE *fout, const struct json_value_s *id, const char *code, const char *message, const struct json_value_s *data) {
@@ -311,102 +312,64 @@ int atoi_len(const char *str, int len) {
   return ret;
 }
 
-struct phr_header *get_request_header(struct phr_header *headers, size_t num_headers, const char *header_name) {
-  size_t header_name_length = strlen(header_name);
+char *parse_request(FILE *fd, size_t *content_length) {
+  char buf[1024];
+  size_t buflen = 0;
+  const char *content_length_string = "content-length: ";
+  size_t content_length_string_length = strlen(content_length_string);
 
-  for (size_t i = 0; i < num_headers; i++) {
-    if (header_name_length == headers[i].name_len && !strncasecmp(header_name, headers[i].name, header_name_length)) {
-      return &headers[i];
-    }
-  }
-
-  return NULL;
-}
-
-char *parse_request(FILE *fd, struct phr_header *headers, size_t *num_headers, size_t *content_length) {
-  char buf[128];
-  size_t buflen = 0, prevbuflen = 0;
-  size_t rret;
-  int pret = 0;
-  
-  if (headers == NULL || num_headers == NULL || *num_headers <= 0 || content_length == NULL)
-    return NULL;
+  assert(content_length != NULL);
 
   while (1) {
-    // read the request
-    rret = fread(buf + buflen, 1, sizeof(buf) - buflen, fd);
-    if (rret == 0) {
-      fprintf(stderr, "parse_request: unexpected EOF on fd\n");
-      return NULL; // unexpected EOF
-    }
-
-    prevbuflen = buflen;
-    buflen += rret;
-
-    // parse the headers
-    pret = phr_parse_headers(buf, buflen, headers, num_headers, prevbuflen);
-    if (pret > 0)
-      break; /* successfully parsed the request */
-    else if (pret == -1) {
-      fprintf(stderr, "unable to parse the headers\n");
+    int c = fgetc(fd);
+    if (c == EOF) {
+      fprintf(stderr, "parse_request: unexpected EOF while reading request\n");
       return NULL;
     }
-    /* request is incomplete, continue the loop */
-    assert(pret == -2);
-    if (buflen == sizeof(buf)) {
-      fprintf(stderr, "headers too long, unable to parse\n");
-      return NULL;
+    if (c == '\n') {
+      if (buflen == 0) {
+        break;
+      }
+      if (!memcmp(buf, content_length_string, content_length_string_length)) {
+        if (buflen <= content_length_string_length) {
+          fprintf(stderr, "parse_request: unable to parse content-length\n");
+          return NULL;
+        }
+        *content_length = atoi_len(buf + content_length_string_length, buflen - content_length_string_length);
+      }
+      buf[0] = '\0';
+      buflen = 0;
+    } else if (c != '\r') {
+      buf[buflen++] = tolower(c);
     }
   }
 
-  struct phr_header *content_length_header = get_request_header(headers, *num_headers, "content-length");
-  if (content_length_header == NULL) {
-    fprintf(stderr, "Missing Content-Length header, but it is required");
-    exit(1);
-  }
-
-  // read content-length bytes
-  *content_length = atoi_len(content_length_header->value, (int)content_length_header->value_len);
-  
-  size_t buf_have = buflen - pret;
-    
-  char *content_buf = malloc( *content_length + 1 );
+  char *content_buf = malloc(*content_length + 1);
   if (content_buf == NULL) {
     fprintf(stderr, "unable to allocate %lu bytes for content buffer\n", *content_length);
     return NULL;
   }
-
-  if (buf_have >= *content_length) {
-    memcpy(content_buf, buf + pret, *content_length);
-  } else {
-    // fprintf(stderr, "buf_have %lu, content_length %d\n", buf_have, *content_length);
-  
-    size_t buf_to_read = *content_length - buf_have;
-
-    memcpy(content_buf, buf + pret, buf_have);
-    rret = fread(content_buf + buf_have, 1, buf_to_read, fd);
-    if (rret == 0) {
-      fprintf(stderr, "unexpected EOF reading request body\n");
+  for (size_t i = 0; i < *content_length; i++) {
+    int c = fgetc(fd);
+    if (c == EOF) {
       free(content_buf);
+      fprintf(stderr, "unable to read request body\n");
       return NULL;
-    }  
+    }
+    content_buf[i] = c;
   }
-  
   content_buf[*content_length] = '\0';
 
   return content_buf;
 }
 
 int json_rpc_server_step(FILE *fd, FILE *fout, json_rpc_evaluate_t evaluate, void *state) {
-  struct phr_header headers[32];
-
-  size_t num_headers = sizeof(headers) / sizeof(headers[0]);
   size_t content_length;
-  char *content = parse_request(fd, headers, &num_headers, &content_length);
+  char *content = parse_request(fd, &content_length);
     
   if (content == NULL) {
     fprintf(stderr, "json_rpc_server_step: failed to parse anything\n");
-    return 1;
+    return 0;
   }
   // printf("RAW content: %s with length %d\n", content, content_length);
   
@@ -433,6 +396,6 @@ int json_rpc_server_step(FILE *fd, FILE *fout, json_rpc_evaluate_t evaluate, voi
     free(json_value);
   }
   free(content);
-  
+
   return cont;
 }
