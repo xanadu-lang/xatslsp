@@ -5,33 +5,32 @@ include(FetchContent)
 FetchContent_Declare(jsonh
   GIT_REPOSITORY https://github.com/sheredom/json.h.git
   GIT_TAG eeb1c14)
-FetchContent_Declare(picohttpparser
-  GIT_REPOSITORY https://github.com/h2o/picohttpparser.git
-  GIT_TAG 8ba2328)
-FetchContent_Declare(librope
-  GIT_REPOSITORY https://github.com/josephg/librope.git
-  GIT_TAG 81e1938)
+FetchContent_Declare(uriparse
+  GIT_REPOSITORY https://github.com/whiler/uriparse.git
+  GIT_TAG d48d43d)
+FetchContent_Declare(uriencode
+  GIT_REPOSITORY https://github.com/dnmfarrell/URI-Encode-C.git
+  GIT_TAG 21ad52e)
 
-FetchContent_MakeAvailable(jsonh picohttpparser librope)
+FetchContent_MakeAvailable(jsonh uriparse uriencode)
 
-project (XATSLSP)
+project (XATSLS)
 
-# picohttpparser does not supply a CMakeLists.txt file,
+# uriparse does not supply a CMakeLists.txt file,
 # so define a library yourself
-add_library(picohttpparser
-  ${picohttpparser_SOURCE_DIR}/picohttpparser.c
-  ${picohttpparser_SOURCE_DIR}/picohttpparser.h)
-# librope does not supply a CMakeLists.txt file,
+add_library(uriparse
+  ${uriparse_SOURCE_DIR}/src/uriparse.c
+  ${uriparse_SOURCE_DIR}/src/uriparse.h)
+# uriencode does not supply a CMakeLists.txt file,
 # so define a library yourself
-add_library(librope
-  ${librope_SOURCE_DIR}/rope.c
-  ${librope_SOURCE_DIR}/rope.h)
-target_compile_definitions(librope PUBLIC ROPE_WCHAR=1)
+add_library(uriencode
+  ${uriencode_SOURCE_DIR}/src/uri_encode.c
+  ${uriencode_SOURCE_DIR}/src/uri_encode.h)
 
 include_directories(
   ${jsonh_SOURCE_DIR}
-  ${picohttpparser_SOURCE_DIR}
-  ${librope_SOURCE_DIR})
+  ${uriparse_SOURCE_DIR}/src
+  ${uriencode_SOURCE_DIR}/src)
 
 add_subdirectory (src)
 
